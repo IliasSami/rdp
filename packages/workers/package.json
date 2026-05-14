@@ -1,0 +1,34 @@
+{
+  "name": "@rdp/workers",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "dev": "tsx watch src/runner.ts",
+    "start": "node dist/runner.js",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "clean": "rm -rf dist node_modules/.cache .turbo"
+  },
+  "dependencies": {
+    "@rdp/ai": "workspace:*",
+    "@rdp/db": "workspace:*",
+    "@rdp/nlp": "workspace:*",
+    "@rdp/types": "workspace:*",
+    "@rdp/utils": "workspace:*",
+    "bullmq": "^5.7.0",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.5"
+  }
+}

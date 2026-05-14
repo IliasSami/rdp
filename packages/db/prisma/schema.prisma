@@ -1,0 +1,1049 @@
+// ─────────────────────────────────────────────────────────────────────────
+// RDP — Prisma Schema
+// Run Digital Platform — agency-internal SEO management
+// All models from MASTER_BUILD_PROMPT.md Task 1.2 + environment-and-schema-reference.md
+// ─────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions", "fullTextSearch"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [postgis, vector, pg_trgm]
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// ENUMS
+// ═════════════════════════════════════════════════════════════════════════
+
+enum UserRole {
+  SUPER_ADMIN
+  MANAGER
+  SPECIALIST
+}
+
+enum CampaignStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum CampaignRole {
+  OWNER
+  MANAGER
+  VIEWER
+}
+
+enum ConnectionType {
+  GBP
+  GSC
+  GA4
+  WORDPRESS
+  GOOGLE_DRIVE
+  FACEBOOK
+  INSTAGRAM
+  LINKEDIN
+}
+
+// Merged from both spec sources — PENDING covers OAuth-in-progress,
+// ACTIVE/EXPIRED/REVOKED/ERROR cover post-connection states.
+enum ConnectionStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  REVOKED
+  ERROR
+}
+
+enum ModuleType {
+  LOCAL_SEO
+  TECHNICAL_SEO
+  ON_PAGE_SEO
+  OFF_PAGE_SEO
+  SOCIAL
+  REPORTING
+}
+
+// Full lifecycle: PENDING (created) → APPROVED/REJECTED (human action) → EXECUTED/FAILED (post-action)
+enum AgentDraftStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXECUTED
+  FAILED
+}
+
+enum AgentTaskType {
+  // Local SEO
+  REVIEW_RESPONSE
+  GBP_POST
+  GBP_PHOTO_UPLOAD
+  GBP_DESCRIPTION_UPDATE
+  GBP_SERVICES_UPDATE
+  REVIEW_REQUEST_EMAIL
+  GBP_QA_RESPONSE
+  // Technical SEO
+  META_TAG_FIX
+  CANONICAL_FIX
+  JSONLD_INJECT
+  ROBOTS_UPDATE
+  REDIRECT_ADD
+  ALT_TEXT_FIX
+  // On-Page SEO
+  CONTENT_OPTIMIZATION
+  CONTENT_BRIEF_CREATION
+  FAQ_SECTION_ADD
+  SCHEMA_MARKUP_UPDATE
+  // Off-Page SEO
+  OUTREACH_EMAIL
+  OUTREACH_FOLLOWUP
+  CITATION_SUBMISSION
+  // Social
+  SOCIAL_POST
+  SOCIAL_REPLY
+  // Reporting
+  MONTHLY_REPORT
+}
+
+enum NodeType {
+  PAGE
+  ENTITY
+  TOPIC
+  KEYWORD
+}
+
+enum CrawlSessionStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum IssueSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+  LLM_SPECIFIC
+}
+
+enum IssueCategory {
+  CRAWLABILITY
+  CORE_TAGS
+  STRUCTURE
+  TECHNICAL
+  CONTENT_QUALITY
+  PERFORMANCE
+  LLM_SPECIFIC
+}
+
+enum ReviewSource {
+  GBP
+  FACEBOOK
+  TRIPADVISOR
+  YELP
+  HOMESTARS
+  BBB
+  OTHER
+}
+
+enum ReviewSentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+enum SocialPlatform {
+  FACEBOOK
+  INSTAGRAM
+  LINKEDIN
+  GBP
+}
+
+enum SocialPostStatus {
+  DRAFT
+  APPROVED
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+enum ReportStatus {
+  GENERATING
+  READY
+  SENT
+  ARCHIVED
+}
+
+enum OutreachStatus {
+  PENDING
+  SENT
+  OPENED
+  REPLIED
+  WON
+  LOST
+  BOUNCED
+}
+
+enum CitationStatus {
+  MISSING
+  IN_PROGRESS
+  SUBMITTED
+  VERIFIED
+  INCONSISTENT
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// IDENTITY / ACCESS
+// ═════════════════════════════════════════════════════════════════════════
+
+model Agency {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  logoUrl     String?
+  timezone    String     @default("America/Toronto")
+  defaultLang String     @default("en-CA")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  users       User[]
+  campaigns   Campaign[]
+}
+
+model User {
+  id            String           @id @default(cuid())
+  agencyId      String
+  email         String           @unique
+  name          String
+  passwordHash  String
+  role          UserRole         @default(SPECIALIST)
+  emailVerified Boolean          @default(false)
+  lastLoginAt   DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  agency        Agency           @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  sessions      Session[]
+  campaignAccess CampaignAccess[]
+  auditLogs     AuditLog[]
+  reviewedDrafts AgentDraft[]    @relation("DraftReviewer")
+
+  @@index([agencyId])
+  @@index([email])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  refreshToken String   @unique
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model CampaignAccess {
+  id         String       @id @default(cuid())
+  userId     String
+  campaignId String
+  role       CampaignRole @default(VIEWER)
+  createdAt  DateTime     @default(now())
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign   Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, campaignId])
+  @@index([userId])
+  @@index([campaignId])
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// CAMPAIGN CORE
+// ═════════════════════════════════════════════════════════════════════════
+
+model Campaign {
+  id        String         @id @default(cuid())
+  agencyId  String
+  name      String
+  status    CampaignStatus @default(ACTIVE)
+  timezone  String         @default("America/Toronto")
+  language  String[]       @default(["en-CA"])
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  agency        Agency           @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  clientProfile ClientProfile?
+  connections   Connection[]
+  competitors   Competitor[]
+  agentContext  AgentContext?
+  knowledgeDocs KnowledgeDoc[]
+  agentDrafts   AgentDraft[]
+  auditLogs     AuditLog[]
+  accessList    CampaignAccess[]
+
+  localSeo     LocalSeoModule?
+  technicalSeo TechnicalSeoModule?
+  onPageSeo    OnPageSeoModule?
+  offPageSeo   OffPageSeoModule?
+  social       SocialModule?
+  reporting    ReportingModule?
+
+  knowledgeGraphNodes KnowledgeGraphNode[]
+  knowledgeGraphEdges KnowledgeGraphEdge[]
+
+  @@index([agencyId])
+  @@index([status])
+}
+
+model ClientProfile {
+  id                 String   @id @default(cuid())
+  campaignId         String   @unique
+  businessName       String
+  websiteUrl         String
+  primaryCity        String
+  primaryRegion      String?
+  industry           String
+  description        String?
+  usps               String?
+  servicesProducts   String?
+  targetAudience     String?
+  toneOfVoice        String?
+  brandGuidelinesUrl String?
+  phone              String?
+  address            String?
+  postalCode         String?
+  centerLat          Float?
+  centerLng          Float?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  campaign           Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+}
+
+model Competitor {
+  id             String   @id @default(cuid())
+  campaignId     String
+  name           String
+  websiteUrl     String?
+  gbpName        String?
+  gbpPlaceId     String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  campaign       Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+}
+
+model Connection {
+  id           String           @id @default(cuid())
+  campaignId   String
+  type         ConnectionType
+  status       ConnectionStatus @default(PENDING)
+  // AES-256-GCM encrypted JSON blob. Never stored or logged in plaintext.
+  credentials  String
+  metadata     Json             @default("{}")
+  lastSyncedAt DateTime?
+  lastErrorAt  DateTime?
+  lastError    String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  campaign     Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, type])
+  @@index([status])
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// AGENT INFRASTRUCTURE (cross-module)
+// ═════════════════════════════════════════════════════════════════════════
+
+model AgentContext {
+  id                 String   @id @default(cuid())
+  campaignId         String   @unique
+  businessSummary    String   @default("")
+  toneOfVoice        String   @default("")
+  doNotMention       String[] @default([])
+  styleGuidelines    String   @default("")
+  // Conversational training messages — JSON array of {role, content, ts}
+  chatHistory        Json     @default("[]")
+  // Last-built rolled-up context blob (cached for performance)
+  cachedContext      String?
+  cachedContextAt    DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  campaign           Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+}
+
+model KnowledgeDoc {
+  id          String                       @id @default(cuid())
+  campaignId  String
+  title       String
+  source      String // "upload" | "url" | "drive"
+  mimeType    String
+  storageKey  String // R2 key
+  byteSize    Int
+  rawText     String?
+  chunkCount  Int                          @default(0)
+  createdAt   DateTime                     @default(now())
+  campaign    Campaign                     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  chunks      KnowledgeDocChunk[]
+
+  @@index([campaignId])
+}
+
+model KnowledgeDocChunk {
+  id           String                          @id @default(cuid())
+  knowledgeDocId String
+  chunkIndex   Int
+  text         String
+  // pgvector — written via $executeRaw, queried via cosine similarity (<=>)
+  embedding    Unsupported("vector(1536)")?
+  createdAt    DateTime                        @default(now())
+  doc          KnowledgeDoc                    @relation(fields: [knowledgeDocId], references: [id], onDelete: Cascade)
+
+  @@index([knowledgeDocId])
+}
+
+model AgentDraft {
+  id             String           @id @default(cuid())
+  campaignId     String
+  module         ModuleType
+  // String not enum — allows new AgentTaskType values without migration churn while still typed via Zod at boundary
+  actionType     String
+  targetId       String?
+  targetUrl      String?
+  payload        Json
+  reasoning      String
+  status         AgentDraftStatus @default(PENDING)
+  rejectedReason String?
+  executionLog   Json?
+  createdAt      DateTime         @default(now())
+  reviewedAt     DateTime?
+  reviewedBy     String?
+  executedAt     DateTime?
+  campaign       Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  reviewer       User?            @relation("DraftReviewer", fields: [reviewedBy], references: [id])
+
+  @@index([campaignId, status])
+  @@index([module, status])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  campaignId String?
+  action     String
+  entityType String
+  entityId   String?
+  payload    Json     @default("{}")
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId, createdAt])
+  @@index([userId, createdAt])
+  @@index([action])
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// LOCAL SEO MODULE
+// ═════════════════════════════════════════════════════════════════════════
+
+model LocalSeoModule {
+  id          String   @id @default(cuid())
+  campaignId  String   @unique
+  // Cached GBP profile completeness (0-100)
+  completenessScore Int @default(0)
+  lastSyncAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  gbpPosts    GbpPost[]
+  reviews     Review[]
+  citations   Citation[]
+  citationCampaigns CitationCampaign[]
+  gridScans   GridScan[]
+}
+
+model GbpPost {
+  id           String         @id @default(cuid())
+  localSeoId   String
+  // GBP API IDs
+  gbpPostId    String?
+  postType     String // WHATS_NEW | OFFER | EVENT | PRODUCT
+  title        String?
+  body         String
+  ctaType      String?
+  ctaUrl       String?
+  imageUrl     String?
+  scheduledFor DateTime?
+  publishedAt  DateTime?
+  status       String         @default("DRAFT") // DRAFT | SCHEDULED | PUBLISHED | FAILED
+  views        Int            @default(0)
+  clicks       Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  localSeo     LocalSeoModule @relation(fields: [localSeoId], references: [id], onDelete: Cascade)
+
+  @@index([localSeoId, status])
+  @@index([scheduledFor])
+}
+
+model Review {
+  id           String          @id @default(cuid())
+  localSeoId   String
+  externalId   String // ID on the source platform
+  source       ReviewSource
+  rating       Int // 1-5
+  authorName   String?
+  text         String
+  language     String          @default("en-CA")
+  sentiment    ReviewSentiment?
+  topics       String[]        @default([])
+  responded    Boolean         @default(false)
+  reviewedAt   DateTime
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  localSeo     LocalSeoModule  @relation(fields: [localSeoId], references: [id], onDelete: Cascade)
+  responses    ReviewResponse[]
+
+  @@unique([source, externalId])
+  @@index([localSeoId, reviewedAt])
+  @@index([localSeoId, responded])
+  @@index([localSeoId, source])
+  @@index([localSeoId, sentiment])
+}
+
+model ReviewResponse {
+  id         String   @id @default(cuid())
+  reviewId   String
+  text       String
+  postedById String? // userId of approver
+  postedAt   DateTime @default(now())
+  // Reference to the AgentDraft that produced this response
+  agentDraftId String?
+  review     Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@index([reviewId])
+}
+
+model Citation {
+  id            String         @id @default(cuid())
+  localSeoId    String
+  directoryName String
+  directoryUrl  String?
+  tier          Int            @default(2) // 1 = essential, 2 = important, 3 = niche
+  status        CitationStatus @default(MISSING)
+  napAccuracy   Int? // 0-100
+  nameMatch     Boolean?
+  addressMatch  Boolean?
+  phoneMatch    Boolean?
+  listingUrl    String?
+  notes         String?
+  lastCheckedAt DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  localSeo      LocalSeoModule @relation(fields: [localSeoId], references: [id], onDelete: Cascade)
+
+  @@unique([localSeoId, directoryName])
+  @@index([localSeoId, status])
+  @@index([localSeoId, tier])
+}
+
+model CitationCampaign {
+  id           String         @id @default(cuid())
+  localSeoId   String
+  name         String
+  // Array of citation IDs targeted in this push
+  targetIds    String[]       @default([])
+  startedAt    DateTime       @default(now())
+  completedAt  DateTime?
+  localSeo     LocalSeoModule @relation(fields: [localSeoId], references: [id], onDelete: Cascade)
+
+  @@index([localSeoId])
+}
+
+// GridScan — TimescaleDB hypertable on scannedAt. Converted to hypertable
+// post-migration via custom SQL (SELECT create_hypertable(...)).
+model GridScan {
+  id               String         @id @default(cuid())
+  localSeoId       String
+  campaignId       String // denormalized for hypertable performance
+  keyword          String
+  scannedAt        DateTime       @default(now())
+  gridSize         Int
+  radiusKm         Float
+  centerLat        Float
+  centerLng        Float
+  // Array of { lat, lng, row, col, rank, businessName?, competitorRanks? }
+  gridPoints       Json
+  avgRank          Float
+  solv             Float
+  top3Count        Int            @default(0)
+  top10Count       Int            @default(0)
+  notRankingCount  Int            @default(0)
+  dataForSeoTaskId String?
+  localSeo         LocalSeoModule @relation(fields: [localSeoId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, keyword])
+  @@index([campaignId, scannedAt])
+  @@index([keyword, scannedAt])
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// TECHNICAL SEO MODULE
+// ═════════════════════════════════════════════════════════════════════════
+
+model TechnicalSeoModule {
+  id            String         @id @default(cuid())
+  campaignId    String         @unique
+  rootDomain    String?
+  sitemapUrl    String?
+  lastCrawlAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  campaign      Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  crawlSessions CrawlSession[]
+}
+
+model CrawlSession {
+  id           String             @id @default(cuid())
+  technicalSeoId String
+  status       CrawlSessionStatus @default(QUEUED)
+  startedAt    DateTime?
+  completedAt  DateTime?
+  totalUrls    Int                @default(0)
+  crawledUrls  Int                @default(0)
+  failedUrls   Int                @default(0)
+  // Snapshot of robots.txt parse — { googlebotAllowed, llmBotAllowed, crawlDelay, sitemapUrls }
+  robotsSummary Json?
+  errorMessage String?
+  createdAt    DateTime           @default(now())
+  technicalSeo TechnicalSeoModule @relation(fields: [technicalSeoId], references: [id], onDelete: Cascade)
+  crawledUrls_ CrawledUrl[]
+  issues       SeoIssue[]
+
+  @@index([technicalSeoId, status])
+  @@index([startedAt])
+}
+
+model CrawledUrl {
+  id              String       @id @default(cuid())
+  crawlSessionId  String
+  url             String
+  finalUrl        String
+  statusCode      Int
+  contentType     String
+  redirectChain   String[]     @default([])
+  titleTag        String?
+  metaDesc        String?
+  robotsMeta      String?
+  canonicalUrl    String?
+  h1              String?
+  h2s             String[]     @default([])
+  wordCount       Int          @default(0)
+  mainContent     String?
+  // pgvector — content embedding for duplicate detection
+  contentEmbedding Unsupported("vector(1536)")?
+  internalLinks   Json         @default("[]")
+  externalLinks   Json         @default("[]")
+  structuredData  Json         @default("[]")
+  entities        Json         @default("[]")
+  cms             String?
+  hreflang        Json         @default("[]")
+  imagesNoAlt     Int          @default(0)
+  crawledAt       DateTime     @default(now())
+  userAgent       String
+  session         CrawlSession @relation(fields: [crawlSessionId], references: [id], onDelete: Cascade)
+
+  @@index([crawlSessionId])
+  @@index([url])
+  @@index([statusCode])
+}
+
+model SeoIssue {
+  id              String        @id @default(cuid())
+  crawlSessionId  String
+  type            String // e.g. DUPLICATE_CONTENT, MISSING_H1, LLM_BLOCKED
+  category        IssueCategory
+  severity        IssueSeverity
+  description     String
+  whyItMatters    String
+  // JSON array of remediation steps
+  howToFix        Json          @default("[]")
+  estimatedImpact String // low | medium | high
+  affectedUrls    Json          @default("[]")
+  detectedAt      DateTime      @default(now())
+  resolved        Boolean       @default(false)
+  resolvedAt      DateTime?
+  session         CrawlSession  @relation(fields: [crawlSessionId], references: [id], onDelete: Cascade)
+
+  @@index([crawlSessionId, severity])
+  @@index([crawlSessionId, type])
+  @@index([crawlSessionId, resolved])
+}
+
+model KnowledgeGraphNode {
+  id             String                      @id @default(cuid())
+  campaignId     String
+  crawlSessionId String?
+  type           NodeType
+  label          String
+  url            String?
+  properties     Json                        @default("{}")
+  embedding      Unsupported("vector(1536)")?
+  createdAt      DateTime                    @default(now())
+  campaign       Campaign                    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  outEdges       KnowledgeGraphEdge[]        @relation("FromNode")
+  inEdges        KnowledgeGraphEdge[]        @relation("ToNode")
+
+  @@index([campaignId, type])
+  @@index([crawlSessionId])
+}
+
+model KnowledgeGraphEdge {
+  id         String             @id @default(cuid())
+  campaignId String
+  fromNodeId String
+  toNodeId   String
+  relation   String // LINKS_TO, MENTIONS, IS_A, COVERS_TOPIC
+  weight     Float              @default(1.0)
+  createdAt  DateTime           @default(now())
+  campaign   Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  fromNode   KnowledgeGraphNode @relation("FromNode", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  toNode     KnowledgeGraphNode @relation("ToNode", fields: [toNodeId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([fromNodeId])
+  @@index([toNodeId])
+  @@index([relation])
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// ON-PAGE SEO MODULE
+// ═════════════════════════════════════════════════════════════════════════
+
+model OnPageSeoModule {
+  id           String        @id @default(cuid())
+  campaignId   String        @unique
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  campaign     Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contentPages ContentPage[]
+}
+
+model ContentPage {
+  id              String           @id @default(cuid())
+  onPageSeoId     String
+  url             String
+  wpPostId        Int?
+  title           String?
+  language        String           @default("en-CA")
+  wordCount       Int              @default(0)
+  // Latest score snapshot (0-100)
+  contentScore    Int?
+  // GSC + GA4 cached metrics
+  gscImpressions  Int              @default(0)
+  gscClicks       Int              @default(0)
+  gscAvgPosition  Float?
+  ga4Sessions     Int              @default(0)
+  ga4BounceRate   Float?
+  lastCrawledAt   DateTime?
+  lastOptimizedAt DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  onPageSeo       OnPageSeoModule  @relation(fields: [onPageSeoId], references: [id], onDelete: Cascade)
+  scores          ContentScore[]
+  serpAnalyses    SerpAnalysis[]
+  optDrafts       OptimizationDraft[]
+
+  @@index([onPageSeoId])
+  @@index([url])
+}
+
+model ContentScore {
+  id                  String      @id @default(cuid())
+  contentPageId       String
+  primaryKeyword      String
+  language            String      @default("en-CA")
+  totalScore          Int // 0-100
+  keywordScore        Int
+  structureScore      Int
+  entityScore         Int
+  nlpScore            Int
+  geoScore            Int
+  // Detailed breakdown JSON — { termChecklist, entityChecklist, structureChecklist, geoChecklist }
+  breakdown           Json
+  createdAt           DateTime    @default(now())
+  contentPage         ContentPage @relation(fields: [contentPageId], references: [id], onDelete: Cascade)
+
+  @@index([contentPageId, createdAt])
+}
+
+model SerpAnalysis {
+  id            String       @id @default(cuid())
+  contentPageId String?
+  campaignId    String
+  keyword       String
+  language      String       @default("en-CA")
+  locationCode  Int          @default(2124) // Canada
+  // Top-10 competitor URLs + extracted signals
+  competitorUrls Json        @default("[]")
+  tfidfTerms    Json         @default("[]")
+  requiredEntities Json      @default("[]")
+  avgCompetitorWordCount Int @default(0)
+  headingPatterns Json       @default("[]")
+  hasFaqRatio   Float        @default(0)
+  rawDfsTaskId  String?
+  createdAt     DateTime     @default(now())
+  contentPage   ContentPage? @relation(fields: [contentPageId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId, keyword])
+  @@index([keyword, createdAt])
+}
+
+model OptimizationDraft {
+  id            String      @id @default(cuid())
+  contentPageId String
+  // Reference to AgentDraft that owns approval
+  agentDraftId  String?
+  primaryKeyword String
+  originalContent String
+  proposedContent String
+  // Annotated diff data
+  changes       Json        @default("[]")
+  scoreBefore   Int?
+  scoreAfter    Int?
+  status        String      @default("DRAFT") // DRAFT | APPROVED | PUSHED | REJECTED
+  createdAt     DateTime    @default(now())
+  contentPage   ContentPage @relation(fields: [contentPageId], references: [id], onDelete: Cascade)
+
+  @@index([contentPageId, status])
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// OFF-PAGE SEO MODULE
+// ═════════════════════════════════════════════════════════════════════════
+
+model OffPageSeoModule {
+  id              String              @id @default(cuid())
+  campaignId      String              @unique
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  campaign        Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  backlinkProfile BacklinkProfile?
+  opportunities   BacklinkOpportunity[]
+  outreachCampaigns OutreachCampaign[]
+}
+
+model BacklinkProfile {
+  id               String           @id @default(cuid())
+  offPageSeoId     String           @unique
+  domainRating     Int?
+  referringDomains Int              @default(0)
+  totalBacklinks   Int              @default(0)
+  dofollowPct      Float?
+  // Last snapshot from DataForSEO — full anchor distribution etc
+  snapshot         Json             @default("{}")
+  lastSyncedAt     DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  offPageSeo       OffPageSeoModule @relation(fields: [offPageSeoId], references: [id], onDelete: Cascade)
+}
+
+model BacklinkOpportunity {
+  id            String           @id @default(cuid())
+  offPageSeoId  String
+  sourceDomain  String
+  sourceUrl     String?
+  domainRating  Int?
+  opportunityType String // GUEST_POST | RESOURCE_PAGE | DIRECTORY | MENTION
+  relevanceScore Int?
+  // Which competitors of ours are already linked from this source
+  competitorsLinking String[]    @default([])
+  contactEmail  String?
+  notes         String?
+  status        String           @default("NEW") // NEW | OUTREACHED | WON | LOST | IGNORED
+  createdAt     DateTime         @default(now())
+  offPageSeo    OffPageSeoModule @relation(fields: [offPageSeoId], references: [id], onDelete: Cascade)
+
+  @@unique([offPageSeoId, sourceDomain])
+  @@index([offPageSeoId, status])
+}
+
+model OutreachCampaign {
+  id           String           @id @default(cuid())
+  offPageSeoId String
+  name         String
+  templateBody String
+  createdAt    DateTime         @default(now())
+  offPageSeo   OffPageSeoModule @relation(fields: [offPageSeoId], references: [id], onDelete: Cascade)
+  emails       OutreachEmail[]
+
+  @@index([offPageSeoId])
+}
+
+model OutreachEmail {
+  id                 String           @id @default(cuid())
+  outreachCampaignId String
+  recipientEmail     String
+  recipientName      String?
+  subject            String
+  body               String
+  status             OutreachStatus   @default(PENDING)
+  sentAt             DateTime?
+  openedAt           DateTime?
+  repliedAt          DateTime?
+  followupCount      Int              @default(0)
+  // Resend message id
+  providerMessageId  String?
+  campaign           OutreachCampaign @relation(fields: [outreachCampaignId], references: [id], onDelete: Cascade)
+
+  @@index([outreachCampaignId, status])
+  @@index([sentAt])
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// SOCIAL MEDIA MODULE
+// ═════════════════════════════════════════════════════════════════════════
+
+model SocialModule {
+  id           String                 @id @default(cuid())
+  campaignId   String                 @unique
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  campaign     Campaign               @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  calendar     ContentCalendarEntry[]
+  scheduled    ScheduledPost[]
+  engagements  SocialEngagement[]
+}
+
+model ContentCalendarEntry {
+  id          String       @id @default(cuid())
+  socialId    String
+  date        DateTime
+  platform    SocialPlatform
+  postType    String?
+  topic       String?
+  keyMessage  String?
+  cta         String?
+  notes       String?
+  assetUrl    String?
+  createdAt   DateTime     @default(now())
+  social      SocialModule @relation(fields: [socialId], references: [id], onDelete: Cascade)
+  scheduledPosts ScheduledPost[]
+
+  @@index([socialId, date])
+}
+
+model ScheduledPost {
+  id              String           @id @default(cuid())
+  socialId        String
+  calendarEntryId String?
+  platform        SocialPlatform
+  caption         String
+  imageUrl        String?
+  hashtags        String[]         @default([])
+  scheduledFor    DateTime
+  status          SocialPostStatus @default(DRAFT)
+  publishedAt     DateTime?
+  // Platform-specific id (FB post id, IG media id, LI urn, GBP post name)
+  externalId      String?
+  errorMessage    String?
+  // Engagement snapshot
+  likes           Int              @default(0)
+  comments        Int              @default(0)
+  shares          Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  social          SocialModule     @relation(fields: [socialId], references: [id], onDelete: Cascade)
+  calendarEntry   ContentCalendarEntry? @relation(fields: [calendarEntryId], references: [id], onDelete: SetNull)
+
+  @@index([socialId, status])
+  @@index([scheduledFor])
+}
+
+model SocialEngagement {
+  id           String         @id @default(cuid())
+  socialId     String
+  platform     SocialPlatform
+  externalId   String // ID of the comment/mention on the platform
+  // Reference to the post that received this engagement (optional)
+  scheduledPostExternalId String?
+  authorName   String?
+  text         String
+  sentiment    ReviewSentiment?
+  responded    Boolean        @default(false)
+  responseText String?
+  receivedAt   DateTime
+  createdAt    DateTime       @default(now())
+  social       SocialModule   @relation(fields: [socialId], references: [id], onDelete: Cascade)
+
+  @@unique([platform, externalId])
+  @@index([socialId, responded])
+  @@index([socialId, receivedAt])
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// REPORTING MODULE
+// ═════════════════════════════════════════════════════════════════════════
+
+model ReportingModule {
+  id              String            @id @default(cuid())
+  campaignId      String            @unique
+  // Comma-separated stakeholder emails (validated at boundary via Zod)
+  stakeholders    String[]          @default([])
+  autoSendMonthly Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  campaign        Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  templates       ReportTemplate[]
+  reports         GeneratedReport[]
+}
+
+model ReportTemplate {
+  id              String            @id @default(cuid())
+  reportingId     String
+  name            String
+  storageKey      String // R2 key for the DOCX template
+  // Extracted placeholder keys, e.g. ["{{local_seo_summary}}", ...]
+  placeholders    String[]          @default([])
+  isDefault       Boolean           @default(false)
+  createdAt       DateTime          @default(now())
+  reporting       ReportingModule   @relation(fields: [reportingId], references: [id], onDelete: Cascade)
+  reports         GeneratedReport[]
+
+  @@index([reportingId])
+}
+
+model GeneratedReport {
+  id             String          @id @default(cuid())
+  reportingId    String
+  templateId     String?
+  periodStart    DateTime
+  periodEnd      DateTime
+  status         ReportStatus    @default(GENERATING)
+  // R2 keys
+  docxKey        String?
+  pdfKey         String?
+  // Filled placeholders + narrative sections (for review/edit)
+  content        Json            @default("{}")
+  sentTo         String[]        @default([])
+  sentAt         DateTime?
+  createdAt      DateTime        @default(now())
+  reporting      ReportingModule @relation(fields: [reportingId], references: [id], onDelete: Cascade)
+  template       ReportTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([reportingId, periodStart])
+  @@index([status])
+}

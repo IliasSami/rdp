@@ -1,0 +1,30 @@
+{
+  "name": "@rdp/nlp",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "clean": "rm -rf dist node_modules/.cache .turbo"
+  },
+  "dependencies": {
+    "@rdp/types": "workspace:*",
+    "compromise": "^14.13.0",
+    "natural": "^6.10.0",
+    "stopword": "^2.0.8",
+    "franc": "^6.2.0"
+  },
+  "devDependencies": {
+    "@types/natural": "^5.1.5",
+    "@types/node": "^20.12.7",
+    "typescript": "^5.4.5"
+  }
+}

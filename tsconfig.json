@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [],
+  "references": [
+    { "path": "./packages/db" },
+    { "path": "./packages/types" },
+    { "path": "./packages/utils" },
+    { "path": "./packages/ai" },
+    { "path": "./packages/nlp" },
+    { "path": "./packages/workers" },
+    { "path": "./apps/api" },
+    { "path": "./apps/web" }
+  ]
+}

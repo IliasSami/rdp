@@ -1,0 +1,33 @@
+{
+  "name": "rdp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Run Digital Platform — AI-powered SEO management for The Run Digital agency",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "db:generate": "pnpm --filter @rdp/db prisma:generate",
+    "db:migrate": "pnpm --filter @rdp/db prisma:migrate",
+    "db:studio": "pnpm --filter @rdp/db prisma:studio",
+    "db:seed": "pnpm --filter @rdp/db prisma:seed",
+    "db:reset": "pnpm --filter @rdp/db prisma:reset",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "prettier": "^3.2.5",
+    "turbo": "^2.0.4",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.1.0"
+}

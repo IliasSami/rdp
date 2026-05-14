@@ -1,0 +1,50 @@
+{
+  "name": "@rdp/api",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./router": {
+      "types": "./src/router.ts",
+      "default": "./src/router.ts"
+    },
+    "./trpc-types": {
+      "types": "./src/router.ts",
+      "default": "./src/router.ts"
+    }
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist node_modules/.cache .turbo"
+  },
+  "dependencies": {
+    "@fastify/compress": "^7.0.3",
+    "@fastify/cookie": "^9.3.1",
+    "@fastify/cors": "^9.0.1",
+    "@fastify/helmet": "^11.1.1",
+    "@fastify/rate-limit": "^9.1.0",
+    "@fastify/sensible": "^5.6.0",
+    "@rdp/ai": "workspace:*",
+    "@rdp/db": "workspace:*",
+    "@rdp/nlp": "workspace:*",
+    "@rdp/types": "workspace:*",
+    "@rdp/utils": "workspace:*",
+    "@rdp/workers": "workspace:*",
+    "@trpc/server": "^11.0.0-rc.421",
+    "fastify": "^4.27.0",
+    "superjson": "^2.2.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.5"
+  }
+}
